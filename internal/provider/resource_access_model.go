@@ -52,6 +52,12 @@ func (a *accessModelResource) Metadata(_ context.Context, req resource.MetadataR
 	resp.TypeName = req.ProviderTypeName + "_access_model"
 }
 
+func (r *accessModelResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		AvoidJAASValidator{Client: r.client},
+	}
+}
+
 func (a *accessModelResource) Schema(_ context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "A resource that represent a Juju Access Model.",

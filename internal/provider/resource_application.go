@@ -122,6 +122,12 @@ func (r *applicationResource) Configure(ctx context.Context, req resource.Config
 	r.subCtx = tflog.NewSubsystem(ctx, LogResourceApplication)
 }
 
+func (r *applicationResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		RequiresJAASValidator{Client: r.client},
+	}
+}
+
 func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "A resource that represents a single Juju application deployment from a charm. Deployment of bundles" +

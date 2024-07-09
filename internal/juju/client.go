@@ -48,6 +48,8 @@ type Client struct {
 	SSHKeys      sshKeysClient
 	Users        usersClient
 	Secrets      secretsClient
+
+	isJAAS bool
 }
 
 type jujuModel struct {
@@ -69,6 +71,10 @@ type sharedClient struct {
 	subCtx context.Context
 }
 
+func (c Client) IsJAAS() (bool, error) {
+	return c.isJAAS, nil
+}
+
 // NewClient returns a client which can talk to the juju controller
 // represented by controllerConfig. A context is required for logging in the
 // terraform framework.
@@ -81,6 +87,10 @@ func NewClient(ctx context.Context, config ControllerConfiguration) (*Client, er
 		modelUUIDcache:   make(map[string]jujuModel),
 		subCtx:           tflog.NewSubsystem(ctx, LogJujuClient),
 	}
+	isJaas := false
+	if config.ClientID != "" && config.ClientSecret != "" {
+		isJaas = true
+	}
 
 	return &Client{
 		Applications: *newApplicationClient(sc),
@@ -92,6 +102,7 @@ func NewClient(ctx context.Context, config ControllerConfiguration) (*Client, er
 		SSHKeys:      *newSSHKeysClient(sc),
 		Users:        *newUsersClient(sc),
 		Secrets:      *newSecretsClient(sc),
+		isJAAS:       isJaas,
 	}, nil
 }
 
