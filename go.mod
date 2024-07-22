@@ -1,12 +1,14 @@
 module github.com/juju/terraform-provider-juju
 
-go 1.21
+go 1.22.4
+
+toolchain go1.22.5
 
 require (
 	github.com/bflad/tfproviderlint v0.29.0
 	github.com/hashicorp/terraform-plugin-docs v0.19.0
 	// v3.5-beta1
-	github.com/juju/juju v0.0.0-20240415234708-a7538882134d
+	github.com/juju/juju v0.0.0-20240423234833-93553287462a
 
 )
 
@@ -27,6 +29,7 @@ require (
 	github.com/juju/retry v1.0.0
 	github.com/juju/utils/v3 v3.1.1
 	github.com/juju/version/v2 v2.0.1
+	github.com/kian99/jimm-go-api/v3 v3.0.0
 	github.com/rs/zerolog v1.32.0
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/mock v0.4.0
@@ -130,7 +133,7 @@ require (
 	github.com/juju/mgo/v3 v3.0.4 // indirect
 	github.com/juju/mutex/v2 v2.0.0 // indirect
 	github.com/juju/os/v2 v2.2.3 // indirect
-	github.com/juju/packaging/v2 v2.0.1 // indirect
+	github.com/juju/packaging/v3 v3.0.0 // indirect
 	github.com/juju/persistent-cookiejar v1.0.0 // indirect
 	github.com/juju/proxy v1.0.0 // indirect
 	github.com/juju/pubsub/v2 v2.0.0 // indirect

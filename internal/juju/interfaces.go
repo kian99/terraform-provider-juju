@@ -76,3 +76,6 @@ type SecretAPIClient interface {
 	GrantSecret(uri *secrets.URI, name string, apps []string) ([]error, error)
 	RevokeSecret(uri *secrets.URI, name string, apps []string) ([]error, error)
 }
+
+type JaasAPIClient interface {
+}

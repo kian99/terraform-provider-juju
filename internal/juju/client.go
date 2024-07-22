@@ -48,6 +48,7 @@ type Client struct {
 	SSHKeys      sshKeysClient
 	Users        usersClient
 	Secrets      secretsClient
+	JAAS         jaasClient
 
 	isJAAS bool
 }
