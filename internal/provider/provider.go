@@ -294,6 +294,12 @@ func (p *jujuProvider) Resources(_ context.Context) []func() resource.Resource {
 		func() resource.Resource { return NewUserResource() },
 		func() resource.Resource { return NewSecretResource() },
 		func() resource.Resource { return NewAccessSecretResource() },
+		func() resource.Resource { return NewJAASAccessResourceByUUID("group", "group") },
+		func() resource.Resource { return NewJAASAccessResourceByUUID("model", "model") },
+		func() resource.Resource { return NewJAASAccessResourceByUUID("controller", "controller") },
+		func() resource.Resource { return NewJAASAccessResourceByUUID("application-offer", "applicationoffer") },
+		func() resource.Resource { return NewJAASAccessResourceByName("service-account", "serviceaccount") },
+		func() resource.Resource { return NewJAASAccessResourceByName("cloud", "cloud") },
 	}
 }
 

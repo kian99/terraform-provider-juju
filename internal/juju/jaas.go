@@ -38,6 +38,19 @@ func (j *jaasClient) AddTuples(tuples []params.RelationshipTuple) error {
 	return cl.AddRelation(&req)
 }
 
+func (j *jaasClient) DeleteTuples(tuples []params.RelationshipTuple) error {
+	conn, err := j.GetConnection(nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+	cl := j.getJimmAPIClient(conn)
+	req := params.RemoveRelationRequest{
+		Tuples: tuples,
+	}
+	return cl.RemoveRelation(&req)
+}
+
 func (j *jaasClient) ReadTuples(tuple params.RelationshipTuple) ([]params.RelationshipTuple, error) {
 	conn, err := j.GetConnection(nil)
 	if err != nil {
