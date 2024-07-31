@@ -7,8 +7,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -23,27 +25,19 @@ import (
 	"github.com/kian99/jimm-go-api/v3/api/params"
 )
 
-// Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &genericJAASAccessResource{}
-var _ resource.ResourceWithConfigure = &genericJAASAccessResource{}
-
-// NewGenericJAASAccessResource creates a resource that can be used for creating access rules with JAAS.
-// A genericJAASAccessResource is not complete on its own and requires a target for the access rules which is
-// normally a UUID or name. The resourceInfo object must be passed in to define that resource.
-func NewGenericJAASAccessResource(targetInfo resourceInfo) resource.Resource {
-	return &genericJAASAccessResource{targetInfo: targetInfo}
-}
-
+// Getter is used to get details from a plan or state object.
 type Getter interface {
 	Get(ctx context.Context, target interface{}) diag.Diagnostics
 }
 
 type resourceInfo interface {
-	DisplayName() string
 	Identity(ctx context.Context, plan Getter, diag *diag.Diagnostics) string
-	SchemaAttributes() map[string]schema.Attribute
 }
 
+// genericJAASAccessResource is a generic resource that can be used for creating access rules with JAAS.
+// Other types should embed this struct and implement their own metadata and schema methods. The schema
+// should build on top of [PartialAccessSchema].
+// The embedded struct requires a targetInfo interface to enable fetching the target object in the relation.
 type genericJAASAccessResource struct {
 	client     *juju.Client
 	targetInfo resourceInfo
@@ -57,7 +51,7 @@ type genericJAASAccessResource struct {
 // Note that service accounts are treated as users but kept as a separate field for improved validation.
 type genericJAASAccessModel struct {
 	Users           types.Set    `tfsdk:"users"`
-	ServiceAccounts types.Set    `tfsdk:"service-accounts"`
+	ServiceAccounts types.Set    `tfsdk:"service_accounts"`
 	Groups          types.Set    `tfsdk:"groups"`
 	Access          types.String `tfsdk:"access"`
 
@@ -65,52 +59,47 @@ type genericJAASAccessModel struct {
 	ID types.String `tfsdk:"id"`
 }
 
-func (a *genericJAASAccessResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + a.targetInfo.DisplayName() + "_access_model"
-}
-
 func (r *genericJAASAccessResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		RequiresJAASValidator{Client: r.client},
+		resourcevalidator.AtLeastOneOf(
+			path.MatchRoot("users"),
+			path.MatchRoot("groups"),
+			path.MatchRoot("service_accounts"),
+		),
 	}
 }
 
-func (a *genericJAASAccessResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	schema := schema.Schema{
-		Description: "A resource that represent a JAAS Access " + a.targetInfo.DisplayName() + ".",
-		Attributes: map[string]schema.Attribute{
-			"access": schema.StringAttribute{
-				Description: "Type of access to the model",
-				Required:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"users": schema.SetAttribute{
-				Description: "List of users to grant access",
-				Required:    false,
-				ElementType: types.StringType,
-			},
-			"groups": schema.SetAttribute{
-				Description: "List of groups to grant access",
-				Required:    false,
-				ElementType: types.StringType,
-			},
-			"service-accounts": schema.SetAttribute{
-				Description: "List of service account to grant access",
-				Required:    false,
-				ElementType: types.StringType,
-			},
-			// ID required by the testing framework
-			"id": schema.StringAttribute{
-				Computed: true,
+func PartialAccessSchema() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"access": schema.StringAttribute{
+			Description: "Type of access to the model",
+			Required:    true,
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
 			},
 		},
+		"users": schema.SetAttribute{
+			Description: "List of users to grant access",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"groups": schema.SetAttribute{
+			Description: "List of groups to grant access",
+			Optional:    true,
+
+			ElementType: types.StringType,
+		},
+		"service_accounts": schema.SetAttribute{
+			Description: "List of service account to grant access",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		// ID required by the testing framework
+		"id": schema.StringAttribute{
+			Computed: true,
+		},
 	}
-	for key, attribute := range a.targetInfo.SchemaAttributes() {
-		schema.Attributes[key] = attribute
-	}
-	resp.Schema = schema
 }
 
 // Configure enables provider-level data or clients to be set in the
@@ -171,7 +160,7 @@ func (a *genericJAASAccessResource) Read(ctx context.Context, req resource.ReadR
 		addClientNotConfiguredError(&resp.Diagnostics, "access model", "read")
 		return
 	}
-	var plan jaasAccessModelByUUID
+	var plan genericJAASAccessModel
 	// Get the Terraform state from the request into the plan
 	resp.Diagnostics.Append(req.State.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
