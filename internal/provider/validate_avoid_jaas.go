@@ -46,8 +46,7 @@ func (v AvoidJAASValidator) Validate(ctx context.Context, config tfsdk.Config) d
 	var diags diag.Diagnostics
 
 	if v.Client != nil {
-		isJAAS, err := v.Client.IsJAAS()
-		if err == nil && isJAAS {
+		if v.Client.IsJAAS() {
 			diags.AddWarning("Poor use of resource with JAAS.",
 				"It is not recommended to use this resource with a JAAS setup. "+
 					"JAAS offers additional enterprise features through the use of dedicated resources. "+

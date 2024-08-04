@@ -50,7 +50,7 @@ type Client struct {
 	Secrets      secretsClient
 	JAAS         jaasClient
 
-	isJAAS bool
+	isJAAS func() bool
 }
 
 type jujuModel struct {
@@ -72,8 +72,8 @@ type sharedClient struct {
 	subCtx context.Context
 }
 
-func (c Client) IsJAAS() (bool, error) {
-	return c.isJAAS, nil
+func (c Client) IsJAAS() bool {
+	return c.isJAAS()
 }
 
 // NewClient returns a client which can talk to the juju controller
@@ -88,9 +88,9 @@ func NewClient(ctx context.Context, config ControllerConfiguration) (*Client, er
 		modelUUIDcache:   make(map[string]jujuModel),
 		subCtx:           tflog.NewSubsystem(ctx, LogJujuClient),
 	}
-	isJaas := false
+	basicJAASCheck := false
 	if config.ClientID != "" && config.ClientSecret != "" {
-		isJaas = true
+		basicJAASCheck = true
 	}
 
 	return &Client{
@@ -103,8 +103,30 @@ func NewClient(ctx context.Context, config ControllerConfiguration) (*Client, er
 		SSHKeys:      *newSSHKeysClient(sc),
 		Users:        *newUsersClient(sc),
 		Secrets:      *newSecretsClient(sc),
-		isJAAS:       isJaas,
+		isJAAS:       func() bool { return sc.IsJAAS(basicJAASCheck) },
 	}, nil
+}
+
+var checkJAASOnce sync.Once
+var isJAAS bool
+
+// IsJAAS checks if the controller is a JAAS controller.
+// It does this by checking whether it offers the "JIMM" facade which
+// will only ever be offered by JAAS. The method accepts a default value
+// and doesn't return an error because callers are not expected to fail if
+// they can't determine whether they are connecting to JAAS.
+//
+// IsJAAS uses a synchronisation object to only perform the check once and return the same result.
+func (sc *sharedClient) IsJAAS(defaultVal bool) bool {
+	checkJAASOnce.Do(func() {
+		conn, err := sc.GetConnection(nil)
+		if err != nil {
+			isJAAS = defaultVal
+			return
+		}
+		isJAAS = conn.BestFacadeVersion("JIMM") != 0
+	})
+	return isJAAS
 }
 
 // GetConnection returns a juju connection for use creating juju

@@ -50,8 +50,7 @@ func (v RequiresJAASValidator) Validate(ctx context.Context, config tfsdk.Config
 	var diags diag.Diagnostics
 
 	if v.Client != nil {
-		isJAAS, err := v.Client.IsJAAS()
-		if err == nil && !isJAAS {
+		if v.Client.IsJAAS() {
 			diags.AddError("Attempted use of resource without JAAS.",
 				"This resource can only be used with a JAAS setup offering additional enterprise features - see https://jaas.ai/ for more details.")
 		}
