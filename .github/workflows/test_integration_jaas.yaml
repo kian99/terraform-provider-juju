@@ -57,7 +57,7 @@ jobs:
           terraform_wrapper: false
       # Starting JAAS will start the JIMM controller and dependencies and create a Juju controller on LXD and connect it to JIMM.
       - name: Setup JAAS
-        uses: canonical/jimm/.github/actions/test-server@v3.1.8
+        uses: kian99/jimm/.github/actions/test-server@v3.1.8-test
         id: jaas
         with:
           jimm-version: v3.1.8
