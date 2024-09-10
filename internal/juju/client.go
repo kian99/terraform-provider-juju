@@ -27,7 +27,10 @@ const (
 	PrefixApplication   = "application-"
 	PrefixStorage       = "storage-"
 	UnspecifiedRevision = -1
-	connectionTimeout   = 30 * time.Second
+)
+
+var (
+	ConnectionTimeout = 2 * time.Second
 )
 
 type ControllerConfiguration struct {
@@ -110,7 +113,7 @@ func (sc *sharedClient) GetConnection(modelName *string) (api.Connection, error)
 
 	dialOptions := func(do *api.DialOpts) {
 		//this is set as a const above, in case we need to use it elsewhere to manage connection timings
-		do.Timeout = connectionTimeout
+		do.Timeout = ConnectionTimeout
 		//default is 2 seconds, as we are changing the overall timeout it makes sense to reduce this as well
 		do.RetryDelay = 1 * time.Second
 	}

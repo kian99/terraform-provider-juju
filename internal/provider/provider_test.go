@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -43,6 +44,10 @@ func init() {
 	frameworkProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
 		"juju": providerserver.NewProtocol6WithError(NewJujuProvider("dev")),
 	}
+
+	// Lower the connection timeout to speed up tests.
+	// Works around https://bugs.launchpad.net/juju/+bug/2080013
+	juju.ConnectionTimeout = 2 * time.Second
 }
 
 func TestProviderConfigure(t *testing.T) {
