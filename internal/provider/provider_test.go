@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -189,20 +190,21 @@ func TestProviderAllowsEmptyCACert(t *testing.T) {
 	assert.Equal(t, "x509: certificate signed by unknown authority", err.Summary())
 }
 
+var preCheckOnce sync.Once
+
 func testAccPreCheck(t *testing.T) {
-	if TestClient != nil {
-		return
-	}
-	if val, ok := os.LookupEnv(isJaasEnvKey); ok && val == "true" {
-		validateJAASTestConfig(t)
-	} else {
-		validateJujuTestConfig(t)
-	}
-	confResp := configureProvider(t, Provider)
-	assert.Equal(t, confResp.Diagnostics.HasError(), false, confResp.Diagnostics.Errors())
-	testClient, ok := confResp.ResourceData.(*juju.Client)
-	assert.Truef(t, ok, "ResourceData, not of type juju client")
-	TestClient = testClient
+	preCheckOnce.Do(func() {
+		if val, ok := os.LookupEnv(isJaasEnvKey); ok && val == "true" {
+			validateJAASTestConfig(t)
+		} else {
+			validateJujuTestConfig(t)
+		}
+		confResp := configureProvider(t, Provider)
+		assert.Equal(t, confResp.Diagnostics.HasError(), false, confResp.Diagnostics.Errors())
+		testClient, ok := confResp.ResourceData.(*juju.Client)
+		assert.Truef(t, ok, "ResourceData, not of type juju client")
+		TestClient = testClient
+	})
 }
 
 func validateJAASTestConfig(t *testing.T) {

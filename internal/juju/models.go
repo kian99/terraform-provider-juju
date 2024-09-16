@@ -5,6 +5,7 @@ package juju
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/juju/errors"
@@ -28,6 +29,28 @@ func (me *modelNotFoundError) Error() string {
 		return fmt.Sprintf(toReturn, me.name)
 	}
 	return fmt.Sprintf(toReturn, me.uuid)
+}
+
+// modelNameValid checks that a model name is either:
+// - <model-name>
+// - <model-owner>/<model-name>
+func modelNameValid(modelName string) (string, bool) {
+	invalidModelMsgf := "%q is not a valid name: model names may only contain lowercase letters, digits and hyphens"
+	fields := strings.Split(modelName, "/")
+	switch len(fields) {
+	case 1:
+		return fmt.Sprintf(invalidModelMsgf, fields[0]), names.IsValidModelName(fields[0])
+	case 2:
+		if !names.IsValidUser(fields[0]) {
+			return fmt.Sprintf("%q invalid user name", fields[0]), false
+		}
+		if !names.IsValidModel(fields[1]) {
+			return fmt.Sprintf(invalidModelMsgf, fields[1]), false
+		}
+		return "", true
+	default:
+		return fmt.Sprintf("%q is not a valid model name: too many fields separated by /", modelName), false
+	}
 }
 
 type modelsClient struct {
@@ -176,7 +199,7 @@ func (c *modelsClient) CreateModel(input CreateModelInput) (CreateModelResponse,
 	resp.UUID = modelInfo.UUID
 
 	// Add a model object on the client internal to the provider
-	c.AddModel(modelInfo.Name, modelInfo.UUID, modelInfo.Type)
+	c.AddModel(modelInfo.Name, modelInfo.Owner, modelInfo.UUID, modelInfo.Type)
 
 	// set constraints when required
 	if input.Constraints.String() == "" {
