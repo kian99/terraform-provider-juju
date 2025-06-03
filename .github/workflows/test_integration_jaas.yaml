@@ -41,7 +41,7 @@ jobs:
   test:
     name: Integration-JAAS
     needs: build
-    runs-on: [self-hosted, jammy, x64]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
     timeout-minutes: 90
@@ -55,15 +55,15 @@ jobs:
         with:
           terraform_version: "1.11.*"
           terraform_wrapper: false
-      - name: Upgrade docker compose.
-        run: |
-          sudo apt-get remove -y --purge docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc
-          sudo rm -rf /etc/docker
-          sudo apt-get autoremove -y --purge  docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc
-          sudo snap install docker --channel latest/edge
+      # - name: Upgrade docker compose.
+      #   run: |
+      #     sudo apt-get remove -y --purge docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc
+      #     sudo rm -rf /etc/docker
+      #     sudo apt-get autoremove -y --purge  docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc
+      #     sudo snap install docker --channel latest/edge
       # Starting JAAS will start the JIMM controller and dependencies and create a Juju controller on LXD and connect it to JIMM.
       - name: Setup JAAS
-        uses: canonical/jimm/.github/actions/test-server@v3
+        uses: kian99/jimm/.github/actions/test-server@remove-svc-account-types
         id: jaas
         with:
           juju-channel: 3/stable
