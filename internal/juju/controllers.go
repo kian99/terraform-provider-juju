@@ -68,7 +68,9 @@ func (r *commandRunner) run(ctx context.Context, args ...string) error {
 	defer logFile.Close()
 
 	// Write command being executed to log
-	logFile.WriteString(fmt.Sprintf("\n=== Executing: %s %s ===\n", r.jujuBinary, strings.Join(args, " ")))
+	if _, err := logFile.WriteString(fmt.Sprintf("\n=== Executing: %s %s ===\n", r.jujuBinary, strings.Join(args, " "))); err != nil {
+		return fmt.Errorf("failed to write to log file: %w", err)
+	}
 
 	// Redirect stdout and stderr to log file
 	cmd.Stdout = logFile
@@ -343,6 +345,11 @@ func buildBootstrapArgs(args BootstrapArguments, configFilePath string) ([]strin
 						cmdArgs = append(cmdArgs, fmt.Sprintf("--%s=%s", flagTag, item.String()))
 					}
 				}
+			}
+		default:
+			// Log unhandled field types for debugging
+			if !fieldValue.IsZero() {
+				fmt.Printf("Warning: unhandled flag field type %s for flag %s\n", fieldValue.Kind(), flagTag)
 			}
 		}
 	}
