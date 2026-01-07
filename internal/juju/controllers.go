@@ -157,9 +157,13 @@ func (d *DefaultJujuCommand) Bootstrap(ctx context.Context, args BootstrapArgume
 
 	// Setup credentials
 	store := jujuclient.NewFileClientStore()
+	credentialName := args.CloudCredential.Name
+	if credentialName == "" {
+		credentialName = cloudName
+	}
 	cloudCred := jujucloud.CloudCredential{
 		AuthCredentials: map[string]jujucloud.Credential{
-			cloudName: buildJujuCredential(args.CloudCredential),
+			credentialName: buildJujuCredential(args.CloudCredential),
 		},
 	}
 	if err := store.UpdateCredential(cloudName, cloudCred); err != nil {
@@ -214,7 +218,7 @@ func (d *DefaultJujuCommand) Destroy(ctx context.Context, connInfo *ControllerCo
 // runJujuCommand executes a juju command with the given arguments and redirects output to a log file.
 func (d *DefaultJujuCommand) runJujuCommand(ctx context.Context, logFilePath string, args ...string) error {
 	cmd := exec.CommandContext(ctx, d.jujuBinary, args...)
-	
+
 	// Open log file in append mode
 	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -224,18 +228,18 @@ func (d *DefaultJujuCommand) runJujuCommand(ctx context.Context, logFilePath str
 
 	// Write command being executed to log
 	logFile.WriteString(fmt.Sprintf("\n=== Executing: %s %s ===\n", d.jujuBinary, strings.Join(args, " ")))
-	
+
 	// Redirect stdout and stderr to log file
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	
+
 	// Set environment
 	cmd.Env = os.Environ()
-	
+
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("command failed: %w", err)
 	}
-	
+
 	return nil
 }
 

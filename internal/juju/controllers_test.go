@@ -11,28 +11,28 @@ import (
 
 func TestSplitCloudNameAndRegion(t *testing.T) {
 	tests := []struct {
-		name              string
-		input             string
-		expectedCloud     string
-		expectedRegion    string
+		name           string
+		input          string
+		expectedCloud  string
+		expectedRegion string
 	}{
 		{
-			name:              "cloud with region",
-			input:             "aws/us-east-1",
-			expectedCloud:     "aws",
-			expectedRegion:    "us-east-1",
+			name:           "cloud with region",
+			input:          "aws/us-east-1",
+			expectedCloud:  "aws",
+			expectedRegion: "us-east-1",
 		},
 		{
-			name:              "cloud without region",
-			input:             "lxd",
-			expectedCloud:     "lxd",
-			expectedRegion:    "",
+			name:           "cloud without region",
+			input:          "lxd",
+			expectedCloud:  "lxd",
+			expectedRegion: "",
 		},
 		{
-			name:              "cloud with multiple slashes (only first is separator)",
-			input:             "openstack/region/test",
-			expectedCloud:     "openstack",
-			expectedRegion:    "region/test",
+			name:           "cloud with multiple slashes (only first is separator)",
+			input:          "openstack/region/test",
+			expectedCloud:  "openstack",
+			expectedRegion: "region/test",
 		},
 	}
 
@@ -76,7 +76,7 @@ func TestBuildConstraintsString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := buildConstraintsString(tt.input)
-			
+
 			if len(tt.expected) == 0 {
 				assert.Equal(t, "", result)
 			} else {
@@ -116,7 +116,7 @@ func TestConvertToCloudAuthTypes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := convertToCloudAuthTypes(tt.input)
 			assert.Equal(t, tt.expected, len(result))
-			
+
 			// Verify each converted auth type
 			for i, authType := range tt.input {
 				assert.Equal(t, authType, string(result[i]))
@@ -127,9 +127,9 @@ func TestConvertToCloudAuthTypes(t *testing.T) {
 
 func TestBuildBootstrapArgs(t *testing.T) {
 	tests := []struct {
-		name     string
-		args     BootstrapArguments
-		contains []string // strings that should be in the result
+		name        string
+		args        BootstrapArguments
+		contains    []string // strings that should be in the result
 		notContains []string // strings that should not be in the result
 	}{
 		{
@@ -140,7 +140,7 @@ func TestBuildBootstrapArgs(t *testing.T) {
 					Name: "lxd",
 				},
 			},
-			contains: []string{"bootstrap", "lxd", "test-controller"},
+			contains:    []string{"bootstrap", "lxd", "test-controller"},
 			notContains: []string{"--agent-version", "--admin-secret"},
 		},
 		{
@@ -213,11 +213,11 @@ func TestBuildBootstrapArgs(t *testing.T) {
 			for _, arg := range result {
 				resultStr += arg + " "
 			}
-			
+
 			for _, expected := range tt.contains {
 				assert.Contains(t, resultStr, expected, "Expected to find %q in bootstrap args", expected)
 			}
-			
+
 			for _, notExpected := range tt.notContains {
 				assert.NotContains(t, resultStr, notExpected, "Expected not to find %q in bootstrap args", notExpected)
 			}
@@ -227,8 +227,8 @@ func TestBuildBootstrapArgs(t *testing.T) {
 
 func TestBuildJujuCloud(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    BootstrapCloudArgument
+		name  string
+		input BootstrapCloudArgument
 	}{
 		{
 			name: "basic cloud",
@@ -267,16 +267,16 @@ func TestBuildJujuCloud(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := buildJujuCloud(tt.input)
-			
+
 			assert.Equal(t, tt.input.Name, result.Name)
 			assert.Equal(t, tt.input.Type, result.Type)
 			assert.Equal(t, len(tt.input.AuthTypes), len(result.AuthTypes))
-			
+
 			if tt.input.Region != nil {
 				assert.Equal(t, 1, len(result.Regions))
 				assert.Equal(t, tt.input.Region.Name, result.Regions[0].Name)
 			}
-			
+
 			if tt.input.Config != nil {
 				assert.Equal(t, len(tt.input.Config), len(result.Config))
 			}
@@ -286,8 +286,8 @@ func TestBuildJujuCloud(t *testing.T) {
 
 func TestBuildJujuCredential(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    BootstrapCredentialArgument
+		name  string
+		input BootstrapCredentialArgument
 	}{
 		{
 			name: "basic credential",
@@ -316,7 +316,7 @@ func TestBuildJujuCredential(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := buildJujuCredential(tt.input)
-			
+
 			assert.Equal(t, tt.input.AuthType, string(result.AuthType()))
 			assert.Equal(t, tt.input.Attributes, result.Attributes())
 		})
