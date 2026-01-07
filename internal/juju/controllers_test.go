@@ -129,6 +129,7 @@ func TestBuildBootstrapArgs(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        BootstrapArguments
+		configPath  string
 		contains    []string // strings that should be in the result
 		notContains []string // strings that should not be in the result
 	}{
@@ -150,7 +151,9 @@ func TestBuildBootstrapArgs(t *testing.T) {
 				Cloud: BootstrapCloudArgument{
 					Name: "lxd",
 				},
-				AgentVersion: "3.6.12",
+				Flags: BootstrapFlags{
+					AgentVersion: "3.6.12",
+				},
 			},
 			contains: []string{"bootstrap", "lxd", "test-controller", "--agent-version=3.6.12"},
 		},
@@ -161,23 +164,22 @@ func TestBuildBootstrapArgs(t *testing.T) {
 				Cloud: BootstrapCloudArgument{
 					Name: "lxd",
 				},
-				AdminSecret: "secret123",
+				Flags: BootstrapFlags{
+					AdminSecret: "secret123",
+				},
 			},
 			contains: []string{"bootstrap", "lxd", "test-controller", "--admin-secret=secret123"},
 		},
 		{
-			name: "bootstrap with config",
+			name: "bootstrap with config file",
 			args: BootstrapArguments{
 				Name: "test-controller",
 				Cloud: BootstrapCloudArgument{
 					Name: "lxd",
 				},
-				Config: map[string]string{
-					"key1": "value1",
-					"key2": "value2",
-				},
 			},
-			contains: []string{"bootstrap", "lxd", "test-controller", "--config", "key1=value1", "key2=value2"},
+			configPath: "/tmp/config.yaml",
+			contains:   []string{"bootstrap", "lxd", "test-controller", "--config", "/tmp/config.yaml"},
 		},
 		{
 			name: "bootstrap with constraints",
@@ -186,12 +188,11 @@ func TestBuildBootstrapArgs(t *testing.T) {
 				Cloud: BootstrapCloudArgument{
 					Name: "lxd",
 				},
-				BootstrapConstraints: map[string]string{
-					"arch": "amd64",
-					"mem":  "4G",
+				Flags: BootstrapFlags{
+					BootstrapConstraints: "arch=amd64,mem=4G",
 				},
 			},
-			contains: []string{"bootstrap", "lxd", "test-controller", "--bootstrap-constraints="},
+			contains: []string{"bootstrap", "lxd", "test-controller", "--bootstrap-constraints=arch=amd64,mem=4G"},
 		},
 		{
 			name: "bootstrap with external IPs",
@@ -200,7 +201,9 @@ func TestBuildBootstrapArgs(t *testing.T) {
 				Cloud: BootstrapCloudArgument{
 					Name: "lxd",
 				},
-				ControllerExternalIPAddrs: []string{"192.168.1.1", "192.168.1.2"},
+				Flags: BootstrapFlags{
+					ControllerExternalIPAddrs: []string{"192.168.1.1", "192.168.1.2"},
+				},
 			},
 			contains: []string{"bootstrap", "lxd", "test-controller", "--controller-external-ips=192.168.1.1", "--controller-external-ips=192.168.1.2"},
 		},
@@ -208,7 +211,8 @@ func TestBuildBootstrapArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildBootstrapArgs(tt.args)
+			result, err := buildBootstrapArgs(tt.args, tt.configPath)
+			assert.NoError(t, err)
 			resultStr := ""
 			for _, arg := range result {
 				resultStr += arg + " "

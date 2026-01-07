@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -502,22 +503,8 @@ func (r *controllerResource) Create(ctx context.Context, req resource.CreateRequ
 	}
 
 	bootstrapArgs := juju.BootstrapArguments{
-		AdminSecret:               plan.AdminSecret.ValueString(),
-		AgentVersion:              plan.AgentVersion.ValueString(),
-		BootstrapBase:             plan.BootstrapBase.ValueString(),
-		BootstrapConstraints:      bootstrapConstraints,
-		BootstrapTimeout:          plan.BootstrapTimeout.ValueString(),
-		CAPrivateKey:              plan.CAPrivateKey.ValueString(),
-		Config:                    config,
-		ControllerExternalIPAddrs: controllerExternalIPAddrs,
-		ControllerExternalName:    plan.ControllerExternalName.ValueString(),
-		ControllerServiceType:     plan.ControllerServiceType.ValueString(),
-		JujuBinary:                plan.JujuBinary.ValueString(),
-		ModelConstraints:          modelConstraints,
-		ModelDefault:              modelDefault,
-		Name:                      plan.Name.ValueString(),
-		SSHServerHostKey:          plan.SSHServerHostKey.ValueString(),
-		StoragePool:               storagePool,
+		Name:       plan.Name.ValueString(),
+		JujuBinary: plan.JujuBinary.ValueString(),
 		Cloud: juju.BootstrapCloudArgument{
 			Name:            cloudModel.Name.ValueString(),
 			AuthTypes:       authTypes,
@@ -532,6 +519,24 @@ func (r *controllerResource) Create(ctx context.Context, req resource.CreateRequ
 			Name:       credentialModel.Name.ValueString(),
 			AuthType:   credentialModel.AuthType.ValueString(),
 			Attributes: credentialAttributes,
+		},
+		Config: juju.BootstrapConfig{
+			ControllerConfig: config,
+			ModelDefaults:    modelDefault,
+			StoragePool:      storagePool,
+		},
+		Flags: juju.BootstrapFlags{
+			AdminSecret:               plan.AdminSecret.ValueString(),
+			AgentVersion:              plan.AgentVersion.ValueString(),
+			BootstrapBase:             plan.BootstrapBase.ValueString(),
+			BootstrapTimeout:          plan.BootstrapTimeout.ValueString(),
+			CAPrivateKey:              plan.CAPrivateKey.ValueString(),
+			SSHServerHostKey:          plan.SSHServerHostKey.ValueString(),
+			ControllerExternalName:    plan.ControllerExternalName.ValueString(),
+			ControllerServiceType:     plan.ControllerServiceType.ValueString(),
+			ControllerExternalIPAddrs: controllerExternalIPAddrs,
+			BootstrapConstraints:      buildConstraintsString(bootstrapConstraints),
+			ModelConstraints:          buildConstraintsString(modelConstraints),
 		},
 	}
 
@@ -741,6 +746,18 @@ func (r *controllerResource) Delete(ctx context.Context, req resource.DeleteRequ
 		)
 		return
 	}
+}
+
+// buildConstraintsString converts a constraints map to a comma-separated string.
+func buildConstraintsString(constraints map[string]string) string {
+	if len(constraints) == 0 {
+		return ""
+	}
+	var parts []string
+	for k, v := range constraints {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	return strings.Join(parts, ",")
 }
 
 func (r *controllerResource) trace(msg string, additionalFields ...map[string]interface{}) {

@@ -24,13 +24,8 @@ func TestAcc_ResourceController(t *testing.T) {
 	defer mockCtrl.Finish()
 
 	mockJujuCommand.EXPECT().Bootstrap(gomock.Any(), juju.BootstrapArguments{
-		AdminSecret:      "test-admin-secret",
-		AgentVersion:     "3.6.12",
-		BootstrapBase:    "test-base",
-		BootstrapTimeout: "15m",
-		CAPrivateKey:     "test-ca-private-key",
-		Name:             controllerName,
-		JujuBinary:       "/snap/bin/juju",
+		Name:       controllerName,
+		JujuBinary: "/snap/bin/juju",
 		Cloud: juju.BootstrapCloudArgument{
 			Name:           testingCloud.CloudName(),
 			AuthTypes:      []string{"certificate"},
@@ -57,14 +52,23 @@ func TestAcc_ResourceController(t *testing.T) {
 				"ca_cert":     "test ca cert",
 			},
 		},
-		Config: map[string]string{
-			"config_key_1": "config_value_1",
-			"config_key_2": "config_value_2",
+		Config: juju.BootstrapConfig{
+			ControllerConfig: map[string]string{
+				"config_key_1": "config_value_1",
+				"config_key_2": "config_value_2",
+			},
 		},
-		ControllerExternalIPAddrs: []string{"127.0.0.1", "127.0.0.2"},
-		ControllerExternalName:    "test-external-name",
-		ControllerServiceType:     "Loadbalancer",
-		SSHServerHostKey:          "test-ssh-server-host-key",
+		Flags: juju.BootstrapFlags{
+			AdminSecret:               "test-admin-secret",
+			AgentVersion:              "3.6.12",
+			BootstrapBase:             "test-base",
+			BootstrapTimeout:          "15m",
+			CAPrivateKey:              "test-ca-private-key",
+			SSHServerHostKey:          "test-ssh-server-host-key",
+			ControllerExternalIPAddrs: []string{"127.0.0.1", "127.0.0.2"},
+			ControllerExternalName:    "test-external-name",
+			ControllerServiceType:     "Loadbalancer",
+		},
 	}).Return(&juju.ControllerConnectionInformation{
 		Addresses: []string{"127.0.0.1:17070"},
 		CACert:    "test controller CA cert",
