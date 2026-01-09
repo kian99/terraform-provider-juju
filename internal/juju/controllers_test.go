@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/juju/juju/juju/osenv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -269,70 +270,96 @@ func TestBuildJujuCredential(t *testing.T) {
 	}
 }
 
-func TestBootstrapIntegration(t *testing.T) {
-	// Create a temporary directory for the test
-	tmpDir, err := os.MkdirTemp("", "juju-test-*")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+// mockCommandRunner is a mock implementation of CommandRunner for testing.
+type mockCommandRunner struct {
+	commands    [][]string // Tracks all commands that were run
+	envVars     map[string]string
+	shouldFail  bool
+	logFilePath string
+}
 
-	// Create a mock juju binary that logs all commands it receives
-	mockJujuPath := filepath.Join(tmpDir, "mock-juju")
-	logFilePath := filepath.Join(tmpDir, "juju-commands.log")
+func newMockCommandRunner() *mockCommandRunner {
+	return &mockCommandRunner{
+		commands:    make([][]string, 0),
+		envVars:     make(map[string]string),
+		logFilePath: "/tmp/mock-log.txt",
+	}
+}
 
-	// Create the mock script that echoes all commands to a log file
-	mockScript := fmt.Sprintf(`#!/bin/bash
-# Mock juju binary that logs commands
-echo "$@" >> %s
+func (m *mockCommandRunner) SetEnv(key, value string) {
+	m.envVars[key] = value
+}
 
-# Handle different commands
-case "$1" in
-  "update-public-clouds")
-    exit 0
-    ;;
-  "bootstrap")
-    # Create mock controller data in JUJU_DATA
-    if [ -z "$JUJU_DATA" ]; then
-      echo "Error: JUJU_DATA not set" >&2
-      exit 1
-    fi
-    
-    # Extract controller name (last argument)
-    CONTROLLER_NAME="${@: -1}"
-    
-    # Create controllers.yaml
-    mkdir -p "$JUJU_DATA"
-    cat > "$JUJU_DATA/controllers.yaml" <<EOF
-controllers:
-  $CONTROLLER_NAME:
+func (m *mockCommandRunner) Run(ctx context.Context, args ...string) error {
+	m.commands = append(m.commands, args)
+	
+	if m.shouldFail {
+		return fmt.Errorf("mock command failed")
+	}
+
+	// For bootstrap command, create mock controller data
+	if len(args) > 0 && args[0] == "bootstrap" {
+		jujuData := m.envVars["JUJU_DATA"]
+		if jujuData == "" {
+			return fmt.Errorf("JUJU_DATA not set")
+		}
+
+		// Extract controller name (last argument)
+		controllerName := args[len(args)-1]
+
+		// Create controllers.yaml
+		controllersYAML := fmt.Sprintf(`controllers:
+  %s:
     uuid: test-uuid-12345
     api-endpoints: ["127.0.0.1:17070"]
     ca-cert: |
       -----BEGIN CERTIFICATE-----
       TESTCACERT
       -----END CERTIFICATE-----
-EOF
-    
-    # Create accounts.yaml
-    cat > "$JUJU_DATA/accounts.yaml" <<EOF
-controllers:
-  $CONTROLLER_NAME:
+`, controllerName)
+		
+		if err := os.MkdirAll(jujuData, 0755); err != nil {
+			return fmt.Errorf("failed to create JUJU_DATA directory: %w", err)
+		}
+		
+		if err := os.WriteFile(filepath.Join(jujuData, "controllers.yaml"), []byte(controllersYAML), 0644); err != nil {
+			return fmt.Errorf("failed to write controllers.yaml: %w", err)
+		}
+
+		// Create accounts.yaml
+		accountsYAML := fmt.Sprintf(`controllers:
+  %s:
     user: admin
     password: test-password-12345
-EOF
-    exit 0
-    ;;
-  *)
-    exit 0
-    ;;
-esac
-`, logFilePath)
+`, controllerName)
+		
+		if err := os.WriteFile(filepath.Join(jujuData, "accounts.yaml"), []byte(accountsYAML), 0644); err != nil {
+			return fmt.Errorf("failed to write accounts.yaml: %w", err)
+		}
+	}
 
-	err = os.WriteFile(mockJujuPath, []byte(mockScript), 0755)
-	assert.NoError(t, err)
+	return nil
+}
 
-	// Create a DefaultJujuCommand with the mock binary
-	cmd, err := NewDefaultJujuCommand(mockJujuPath)
+func (m *mockCommandRunner) LogFilePath() string {
+	return m.logFilePath
+}
+
+func TestPerformBootstrap(t *testing.T) {
+	// Create a temporary directory for the test
+	tmpDir, err := os.MkdirTemp("", "juju-test-*")
 	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Set JUJU_DATA for the test
+	oldJujuData := osenv.SetJujuXDGDataHome(tmpDir)
+	defer func() {
+		osenv.SetJujuXDGDataHome(oldJujuData)
+	}()
+
+	// Create mock command runner
+	mockRunner := newMockCommandRunner()
+	mockRunner.SetEnv("JUJU_DATA", tmpDir)
 
 	// Prepare bootstrap arguments
 	bootstrapArgs := BootstrapArguments{
@@ -360,9 +387,9 @@ esac
 		},
 	}
 
-	// Run bootstrap
+	// Run performBootstrap
 	ctx := context.Background()
-	result, err := cmd.Bootstrap(ctx, bootstrapArgs)
+	result, err := performBootstrap(ctx, bootstrapArgs, tmpDir, mockRunner)
 
 	// Verify the result
 	assert.NoError(t, err)
@@ -372,17 +399,18 @@ esac
 	assert.Equal(t, "admin", result.Username)
 	assert.Equal(t, "test-password-12345", result.Password)
 
-	// Verify commands were logged
-	logContent, err := os.ReadFile(logFilePath)
-	assert.NoError(t, err)
-
-	logStr := string(logContent)
+	// Verify commands were executed
+	assert.GreaterOrEqual(t, len(mockRunner.commands), 2, "Expected at least 2 commands to be executed")
+	
 	// Check that update-public-clouds was called
-	assert.Contains(t, logStr, "update-public-clouds --client")
-	// Check that bootstrap was called with the controller name
-	assert.Contains(t, logStr, "bootstrap")
-	assert.Contains(t, logStr, "test-controller")
-	// Check that flags were passed
-	assert.Contains(t, logStr, "--agent-version=3.6.0")
+	assert.Equal(t, []string{"update-public-clouds", "--client"}, mockRunner.commands[0])
+	
+	// Check that bootstrap was called
+	assert.Equal(t, "bootstrap", mockRunner.commands[1][0])
+	assert.Contains(t, mockRunner.commands[1], "test-controller")
+	assert.Contains(t, mockRunner.commands[1], "--agent-version=3.6.0")
+
+	// Verify JUJU_DATA was set
+	assert.Equal(t, tmpDir, mockRunner.envVars["JUJU_DATA"])
 }
 

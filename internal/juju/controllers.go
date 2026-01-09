@@ -31,6 +31,16 @@ type ControllerConnectionInformation struct {
 	Password  string
 }
 
+// CommandRunner defines the interface for executing juju commands.
+type CommandRunner interface {
+	// SetEnv sets an environment variable for command execution.
+	SetEnv(key, value string)
+	// Run executes a juju command with the configured environment and logging.
+	Run(ctx context.Context, args ...string) error
+	// LogFilePath returns the path to the log file.
+	LogFilePath() string
+}
+
 // commandRunner manages command execution with environment variables and logging.
 type commandRunner struct {
 	jujuBinary  string
@@ -54,13 +64,13 @@ func newCommandRunner(jujuBinary string) (*commandRunner, error) {
 	}, nil
 }
 
-// setEnv sets an environment variable for command execution.
-func (r *commandRunner) setEnv(key, value string) {
+// SetEnv sets an environment variable for command execution.
+func (r *commandRunner) SetEnv(key, value string) {
 	r.envVars[key] = value
 }
 
-// run executes a juju command with the configured environment and logging.
-func (r *commandRunner) run(ctx context.Context, args ...string) error {
+// Run executes a juju command with the configured environment and logging.
+func (r *commandRunner) Run(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, r.jujuBinary, args...)
 
 	// Open log file in append mode
@@ -90,6 +100,11 @@ func (r *commandRunner) run(ctx context.Context, args ...string) error {
 	}
 
 	return nil
+}
+
+// LogFilePath returns the path to the log file.
+func (r *commandRunner) LogFilePath() string {
+	return r.logFilePath
 }
 
 // BootstrapConfig contains all configuration options that can be set during bootstrap.
@@ -203,13 +218,19 @@ func (d *DefaultJujuCommand) Bootstrap(ctx context.Context, args BootstrapArgume
 	osenv.SetJujuXDGDataHome(tmpDir)
 
 	// Also set it for the command runner
-	runner.setEnv("JUJU_DATA", tmpDir)
+	runner.SetEnv("JUJU_DATA", tmpDir)
 
 	// Log the bootstrap log file path for debugging
-	tflog.SubsystemDebug(ctx, LogJujuCommand, fmt.Sprintf("Bootstrap log file: %s\n", runner.logFilePath))
+	tflog.SubsystemDebug(ctx, LogJujuCommand, fmt.Sprintf("Bootstrap log file: %s\n", runner.LogFilePath()))
 
+	return performBootstrap(ctx, args, tmpDir, runner)
+}
+
+// performBootstrap executes the actual bootstrap logic with the provided command runner.
+// This function is separated to allow for easier testing with mock command runners.
+func performBootstrap(ctx context.Context, args BootstrapArguments, tmpDir string, runner CommandRunner) (*ControllerConnectionInformation, error) {
 	// Update public clouds
-	if err := runner.run(ctx, "update-public-clouds", "--client"); err != nil {
+	if err := runner.Run(ctx, "update-public-clouds", "--client"); err != nil {
 		return nil, fmt.Errorf("failed to update public clouds: %w", err)
 	}
 
@@ -254,7 +275,7 @@ func (d *DefaultJujuCommand) Bootstrap(ctx context.Context, args BootstrapArgume
 	}
 
 	// Execute bootstrap command
-	if err := runner.run(ctx, bootstrapArgs...); err != nil {
+	if err := runner.Run(ctx, bootstrapArgs...); err != nil {
 		return nil, fmt.Errorf("bootstrap failed: %w", err)
 	}
 
