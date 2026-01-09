@@ -336,8 +336,7 @@ esac
 
 	// Prepare bootstrap arguments
 	bootstrapArgs := BootstrapArguments{
-		Name:       "test-controller",
-		JujuBinary: mockJujuPath,
+		Name: "test-controller",
 		Cloud: BootstrapCloudArgument{
 			Name:      "test-cloud",
 			Type:      "manual",
