@@ -282,7 +282,7 @@ func newMockCommandRunner() *mockCommandRunner {
 	return &mockCommandRunner{
 		commands:    make([][]string, 0),
 		envVars:     make(map[string]string),
-		logFilePath: "/tmp/mock-log.txt",
+		logFilePath: filepath.Join(os.TempDir(), "mock-log.txt"),
 	}
 }
 
