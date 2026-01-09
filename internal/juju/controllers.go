@@ -122,12 +122,12 @@ type BootstrapConfig struct {
 // BootstrapFlags contains CLI flags for the bootstrap command.
 // The flag struct tags indicate the corresponding CLI flag names.
 type BootstrapFlags struct {
-	AgentVersion         string            `flag:"agent-version"`
-	BootstrapBase        string            `flag:"bootstrap-base"`
-	BootstrapConstraints string            `flag:"bootstrap-constraints"`
-	ModelConstraints     string            `flag:"constraints"`
-	ModelDefault         map[string]string `flag:"model-default"`
-	StoragePool          []string          `flag:"storage-pool"`
+	AgentVersion         string   `flag:"agent-version"`
+	BootstrapBase        string   `flag:"bootstrap-base"`
+	BootstrapConstraints []string `flag:"bootstrap-constraints"`
+	ModelConstraints     []string `flag:"constraints"`
+	ModelDefault         []string `flag:"model-default"`
+	StoragePool          []string `flag:"storage-pool"`
 }
 
 // BootstrapArguments contains all the arguments needed for bootstrap.
@@ -269,7 +269,7 @@ func performBootstrap(ctx context.Context, args BootstrapArguments, tmpDir strin
 	}
 
 	// Build bootstrap command arguments
-	bootstrapArgs, err := buildBootstrapArgs(args, configFilePath)
+	bootstrapArgs, err := buildBootstrapArgs(ctx, args, configFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +356,7 @@ func writeBootstrapConfig(workDir string, config BootstrapConfig) (string, error
 }
 
 // buildBootstrapArgs constructs the bootstrap command arguments from BootstrapArguments using reflection for flags.
-func buildBootstrapArgs(args BootstrapArguments, configFilePath string) ([]string, error) {
+func buildBootstrapArgs(ctx context.Context, args BootstrapArguments, configFilePath string) ([]string, error) {
 	cmdArgs := []string{"bootstrap"}
 
 	// Add flags using reflection
@@ -384,27 +384,14 @@ func buildBootstrapArgs(args BootstrapArguments, configFilePath string) ([]strin
 				for j := 0; j < fieldValue.Len(); j++ {
 					item := fieldValue.Index(j)
 					if item.Kind() == reflect.String {
-						cmdArgs = append(cmdArgs, fmt.Sprintf("--%s=%s", flagTag, item.String()))
-					}
-				}
-			}
-		case reflect.Map:
-			if fieldValue.Len() > 0 {
-				// For maps, add multiple flags in key=value format
-				iter := fieldValue.MapRange()
-				for iter.Next() {
-					key := iter.Key()
-					value := iter.Value()
-					if key.Kind() == reflect.String && value.Kind() == reflect.String {
-						// Note: quote the value to handle resetting the value.
-						cmdArgs = append(cmdArgs, fmt.Sprintf("--%s %s=%q", flagTag, key.String(), value.String()))
+						cmdArgs = append(cmdArgs, fmt.Sprintf("--%s %s", flagTag, item.String()))
 					}
 				}
 			}
 		default:
 			// Log unhandled field types for debugging
 			if !fieldValue.IsZero() {
-				fmt.Printf("Warning: unhandled flag field type %s for flag %s\n", fieldValue.Kind(), flagTag)
+				tflog.SubsystemWarn(ctx, LogJujuCommand, fmt.Sprintf("unhandled flag field type %s for flag %s\n", fieldValue.Kind(), flagTag))
 			}
 		}
 	}

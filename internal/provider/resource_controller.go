@@ -6,7 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
+	"maps"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -301,6 +301,7 @@ func (r *controllerResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				ElementType: types.StringType,
 				PlanModifiers: []planmodifier.Map{
 					mapplanmodifier.UseStateForUnknown(),
+					mapplanmodifier.RequiresReplace(),
 				},
 			},
 			"controller_model_config": schema.MapAttribute{
@@ -494,17 +495,21 @@ func (r *controllerResource) Create(ctx context.Context, req resource.CreateRequ
 		}
 	}
 
-	var storagePool []string
+	storagePool := make(map[string]string)
 	if !plan.StoragePool.IsNull() && !plan.StoragePool.IsUnknown() {
 		var storagePoolModel nestedStoragePoolModel
 		resp.Diagnostics.Append(plan.StoragePool.As(ctx, &storagePoolModel, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		storagePool = buildStoragePoolSlice(storagePoolModel, resp.Diagnostics)
+		storagePool["name"] = storagePoolModel.Name.ValueString()
+		storagePool["type"] = storagePoolModel.Type.ValueString()
+		var attributes map[string]string
+		resp.Diagnostics.Append(storagePoolModel.Attributes.ElementsAs(ctx, &attributes, false)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
+		maps.Copy(storagePool, attributes)
 	}
 
 	var controllerConfig map[string]string
@@ -557,10 +562,10 @@ func (r *controllerResource) Create(ctx context.Context, req resource.CreateRequ
 		Flags: juju.BootstrapFlags{
 			AgentVersion:         plan.AgentVersion.ValueString(),
 			BootstrapBase:        plan.BootstrapBase.ValueString(),
-			BootstrapConstraints: buildConstraintsString(bootstrapConstraints),
-			ModelConstraints:     buildConstraintsString(modelConstraints),
-			ModelDefault:         modelDefault,
-			StoragePool:          storagePool,
+			BootstrapConstraints: buildStringListFromMap(bootstrapConstraints),
+			ModelConstraints:     buildStringListFromMap(modelConstraints),
+			ModelDefault:         buildStringListFromMap(modelDefault),
+			StoragePool:          buildStringListFromMap(storagePool),
 		},
 	}
 
@@ -772,34 +777,16 @@ func (r *controllerResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 }
 
-// buildConstraintsString converts a constraints map to a comma-separated string.
-func buildConstraintsString(constraints map[string]string) string {
+// buildStringListFromMap converts a map to a list of key=value strings.
+func buildStringListFromMap(constraints map[string]string) []string {
 	if len(constraints) == 0 {
-		return ""
+		return nil
 	}
 	var parts []string
 	for k, v := range constraints {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
 	}
-	return strings.Join(parts, ",")
-}
-
-func buildStoragePoolSlice(storagePool nestedStoragePoolModel, diags diag.Diagnostics) []string {
-	pool := []string{}
-	pool = append(pool, fmt.Sprintf("name=%s", storagePool.Name.ValueString()))
-	pool = append(pool, fmt.Sprintf("type=%s", storagePool.Type.ValueString()))
-	if !storagePool.Attributes.IsNull() && !storagePool.Attributes.IsUnknown() {
-		var attributes map[string]string
-		d := storagePool.Attributes.ElementsAs(context.Background(), &attributes, false)
-		diags.Append(d...)
-		if diags.HasError() {
-			return nil
-		}
-		for k, v := range attributes {
-			pool = append(pool, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-	return pool
+	return parts
 }
 
 func mergedStringMapFromStateAndPlan(ctx context.Context, diags *diag.Diagnostics, stateMap, planMap types.Map) map[string]string {

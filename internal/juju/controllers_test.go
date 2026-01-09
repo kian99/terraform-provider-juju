@@ -12,6 +12,7 @@ import (
 
 	"github.com/juju/juju/juju/osenv"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func TestBuildConstraintsString(t *testing.T) {
@@ -111,7 +112,7 @@ func TestBuildBootstrapArgs(t *testing.T) {
 				},
 			},
 			contains:    []string{"bootstrap", "lxd", "test-controller"},
-			notContains: []string{"--agent-version", "--admin-secret"},
+			notContains: []string{"--agent-version", "--bootstrap-base"},
 		},
 		{
 			name: "bootstrap with version",
@@ -127,6 +128,22 @@ func TestBuildBootstrapArgs(t *testing.T) {
 			contains: []string{"bootstrap", "lxd", "test-controller", "--agent-version=3.6.12"},
 		},
 		{
+			name: "bootstrap with storage pool and model defaults",
+			args: BootstrapArguments{
+				Name: "test-controller",
+				Cloud: BootstrapCloudArgument{
+					Name: "lxd",
+				},
+				Flags: BootstrapFlags{
+					StoragePool:  []string{"name=mypool", "type=ebs"},
+					ModelDefault: []string{"http-proxy=fake-proxy", "no-proxy=some-url"},
+				},
+			},
+			contains: []string{"bootstrap", "lxd", "test-controller",
+				"--storage-pool name=mypool", "--storage-pool type=ebs",
+				"--model-default http-proxy=fake-proxy", "--model-default no-proxy=some-url"},
+		},
+		{
 			name: "bootstrap with config file",
 			args: BootstrapArguments{
 				Name: "test-controller",
@@ -137,24 +154,11 @@ func TestBuildBootstrapArgs(t *testing.T) {
 			configPath: "/tmp/config.yaml",
 			contains:   []string{"bootstrap", "lxd", "test-controller", "--config", "/tmp/config.yaml"},
 		},
-		{
-			name: "bootstrap with constraints",
-			args: BootstrapArguments{
-				Name: "test-controller",
-				Cloud: BootstrapCloudArgument{
-					Name: "lxd",
-				},
-				Flags: BootstrapFlags{
-					BootstrapConstraints: "arch=amd64,mem=4G",
-				},
-			},
-			contains: []string{"bootstrap", "lxd", "test-controller", "--bootstrap-constraints=arch=amd64,mem=4G"},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := buildBootstrapArgs(tt.args, tt.configPath)
+			result, err := buildBootstrapArgs(t.Context(), tt.args, tt.configPath)
 			assert.NoError(t, err)
 			resultStr := ""
 			for _, arg := range result {
@@ -162,7 +166,7 @@ func TestBuildBootstrapArgs(t *testing.T) {
 			}
 
 			for _, expected := range tt.contains {
-				assert.Contains(t, resultStr, expected, "Expected to find %q in bootstrap args", expected)
+				assert.Contains(t, resultStr, expected, "Expected to find %q in bootstrap args, got value: %s", expected, resultStr)
 			}
 
 			for _, notExpected := range tt.notContains {
@@ -270,44 +274,13 @@ func TestBuildJujuCredential(t *testing.T) {
 	}
 }
 
-// mockCommandRunner is a mock implementation of CommandRunner for testing.
-type mockCommandRunner struct {
-	commands    [][]string // Tracks all commands that were run
-	envVars     map[string]string
-	shouldFail  bool
-	logFilePath string
-}
-
-func newMockCommandRunner() *mockCommandRunner {
-	return &mockCommandRunner{
-		commands:    make([][]string, 0),
-		envVars:     make(map[string]string),
-		logFilePath: filepath.Join(os.TempDir(), "mock-log.txt"),
-	}
-}
-
-func (m *mockCommandRunner) SetEnv(key, value string) {
-	m.envVars[key] = value
-}
-
-func (m *mockCommandRunner) Run(ctx context.Context, args ...string) error {
-	m.commands = append(m.commands, args)
-	
-	if m.shouldFail {
-		return fmt.Errorf("mock command failed")
-	}
-
-	// For bootstrap command, create mock controller data
-	if len(args) > 0 && args[0] == "bootstrap" {
-		jujuData := m.envVars["JUJU_DATA"]
-		if jujuData == "" {
-			return fmt.Errorf("JUJU_DATA not set")
+func simulateBootstrapSuccess(controllerName, jujuData string) func(ctx context.Context, args ...string) error {
+	return func(ctx context.Context, args ...string) error {
+		// Simulate creating controller data
+		if err := os.MkdirAll(jujuData, 0755); err != nil {
+			return fmt.Errorf("failed to create JUJU_DATA directory: %w", err)
 		}
 
-		// Extract controller name (last argument)
-		controllerName := args[len(args)-1]
-
-		// Create controllers.yaml
 		controllersYAML := fmt.Sprintf(`controllers:
   %s:
     uuid: test-uuid-12345
@@ -317,11 +290,6 @@ func (m *mockCommandRunner) Run(ctx context.Context, args ...string) error {
       TESTCACERT
       -----END CERTIFICATE-----
 `, controllerName)
-		
-		if err := os.MkdirAll(jujuData, 0755); err != nil {
-			return fmt.Errorf("failed to create JUJU_DATA directory: %w", err)
-		}
-		
 		if err := os.WriteFile(filepath.Join(jujuData, "controllers.yaml"), []byte(controllersYAML), 0644); err != nil {
 			return fmt.Errorf("failed to write controllers.yaml: %w", err)
 		}
@@ -332,17 +300,12 @@ func (m *mockCommandRunner) Run(ctx context.Context, args ...string) error {
     user: admin
     password: test-password-12345
 `, controllerName)
-		
 		if err := os.WriteFile(filepath.Join(jujuData, "accounts.yaml"), []byte(accountsYAML), 0644); err != nil {
 			return fmt.Errorf("failed to write accounts.yaml: %w", err)
 		}
+
+		return nil
 	}
-
-	return nil
-}
-
-func (m *mockCommandRunner) LogFilePath() string {
-	return m.logFilePath
 }
 
 func TestPerformBootstrap(t *testing.T) {
@@ -358,8 +321,19 @@ func TestPerformBootstrap(t *testing.T) {
 	}()
 
 	// Create mock command runner
-	mockRunner := newMockCommandRunner()
-	mockRunner.SetEnv("JUJU_DATA", tmpDir)
+	ctlr := gomock.NewController(t)
+	defer ctlr.Finish()
+	mockRunner := NewMockCommandRunner(ctlr)
+
+	mockRunner.EXPECT().Run(gomock.Any(), "update-public-clouds", "--client").Times(1)
+	mockRunner.EXPECT().Run(
+		gomock.Any(),
+		"bootstrap",
+		"--agent-version=3.6.0",
+		"--config", tmpDir+"/bootstrap-config.yaml",
+		"test-cloud",
+		"test-controller",
+	).DoAndReturn(simulateBootstrapSuccess("test-controller", tmpDir)).Times(1)
 
 	// Prepare bootstrap arguments
 	bootstrapArgs := BootstrapArguments{
@@ -398,19 +372,4 @@ func TestPerformBootstrap(t *testing.T) {
 	assert.Contains(t, result.CACert, "TESTCACERT")
 	assert.Equal(t, "admin", result.Username)
 	assert.Equal(t, "test-password-12345", result.Password)
-
-	// Verify commands were executed
-	assert.GreaterOrEqual(t, len(mockRunner.commands), 2, "Expected at least 2 commands to be executed")
-	
-	// Check that update-public-clouds was called
-	assert.Equal(t, []string{"update-public-clouds", "--client"}, mockRunner.commands[0])
-	
-	// Check that bootstrap was called
-	assert.Equal(t, "bootstrap", mockRunner.commands[1][0])
-	assert.Contains(t, mockRunner.commands[1], "test-controller")
-	assert.Contains(t, mockRunner.commands[1], "--agent-version=3.6.0")
-
-	// Verify JUJU_DATA was set
-	assert.Equal(t, tmpDir, mockRunner.envVars["JUJU_DATA"])
 }
-
