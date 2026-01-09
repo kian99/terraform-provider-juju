@@ -13,12 +13,15 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	jujucloud "github.com/juju/juju/cloud"
 	"github.com/juju/juju/juju/osenv"
 	"github.com/juju/juju/jujuclient"
 	"github.com/juju/version/v2"
 	"gopkg.in/yaml.v2"
 )
+
+const LogJujuCommand = "juju_command"
 
 // ControllerConnectionInformation contains the connection details for a controller.
 type ControllerConnectionInformation struct {
@@ -36,8 +39,8 @@ type commandRunner struct {
 }
 
 // newCommandRunner creates a new command runner with a log file in the specified directory.
-func newCommandRunner(jujuBinary, workDir string) (*commandRunner, error) {
-	logFile, err := os.CreateTemp(workDir, "juju-bootstrap-log-*.txt")
+func newCommandRunner(jujuBinary string) (*commandRunner, error) {
+	logFile, err := os.CreateTemp("", "juju-bootstrap-log-*.txt")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create log file: %w", err)
 	}
@@ -89,29 +92,27 @@ func (r *commandRunner) run(ctx context.Context, args ...string) error {
 	return nil
 }
 
-// BootstrapConfig contains configuration options that can be written to a config file.
+// BootstrapConfig contains all configuration options that can be set during bootstrap.
+// These are divided into controller configuration, controller model configuration,
+// and bootstrap configuration.
 type BootstrapConfig struct {
 	// Controller configuration
-	ControllerConfig map[string]string `yaml:"controller-config,omitempty"`
-	// Model defaults
-	ModelDefaults map[string]string `yaml:"model-defaults,omitempty"`
-	// Storage pool configuration
-	StoragePool map[string]string `yaml:"storage-pool,omitempty"`
+	ControllerConfig map[string]string
+	// Controller model config
+	ControllerModelConfig map[string]string
+	// BootstrapConfig contains bootstrap configuration options
+	BootstrapConfig map[string]string
 }
 
 // BootstrapFlags contains CLI flags for the bootstrap command.
+// The flag struct tags indicate the corresponding CLI flag names.
 type BootstrapFlags struct {
-	AgentVersion              string   `flag:"agent-version"`
-	BootstrapBase             string   `flag:"bootstrap-series"`
-	BootstrapTimeout          string   `flag:"timeout"`
-	CAPrivateKey              string   `flag:"ca-private-key"`
-	SSHServerHostKey          string   `flag:"ssh-server-host-key"`
-	AdminSecret               string   `flag:"admin-secret"`
-	ControllerExternalName    string   `flag:"controller-external-name"`
-	ControllerServiceType     string   `flag:"controller-service-type"`
-	ControllerExternalIPAddrs []string `flag:"controller-external-ips"`
-	BootstrapConstraints      string   `flag:"bootstrap-constraints"`
-	ModelConstraints          string   `flag:"constraints"`
+	AgentVersion         string            `flag:"agent-version"`
+	BootstrapBase        string            `flag:"bootstrap-base"`
+	BootstrapConstraints string            `flag:"bootstrap-constraints"`
+	ModelConstraints     string            `flag:"constraints"`
+	ModelDefault         map[string]string `flag:"model-default"`
+	StoragePool          []string          `flag:"storage-pool"`
 }
 
 // BootstrapArguments contains all the arguments needed for bootstrap.
@@ -175,10 +176,8 @@ func (d *DefaultJujuCommand) Bootstrap(ctx context.Context, args BootstrapArgume
 		return nil, fmt.Errorf("credential name cannot be empty")
 	}
 	if args.Flags.AgentVersion != "" {
-		if _, err := version.ParseBinary(args.Flags.AgentVersion); err != nil {
-			if _, err := version.Parse(args.Flags.AgentVersion); err != nil {
-				return nil, fmt.Errorf("invalid agent version %q: %w", args.Flags.AgentVersion, err)
-			}
+		if _, err := version.Parse(args.Flags.AgentVersion); err != nil {
+			return nil, fmt.Errorf("invalid agent version %q: %w", args.Flags.AgentVersion, err)
 		}
 	}
 
@@ -189,18 +188,25 @@ func (d *DefaultJujuCommand) Bootstrap(ctx context.Context, args BootstrapArgume
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Create command runner with log file in tmpDir for better organization
-	runner, err := newCommandRunner(d.jujuBinary, tmpDir)
+	// Create command runner with log file
+	runner, err := newCommandRunner(d.jujuBinary)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set JUJU_DATA environment variable for command execution only
-	runner.setEnv("JUJU_DATA", tmpDir)
+	// Set JUJU_DATA environment variable for the running process
+	// so that store related commands use the temporary directory.
+	oldJujuData := osenv.SetJujuXDGDataHome(tmpDir)
+	defer func() {
+		osenv.SetJujuXDGDataHome(oldJujuData)
+	}()
 	osenv.SetJujuXDGDataHome(tmpDir)
 
+	// Also set it for the command runner
+	runner.setEnv("JUJU_DATA", tmpDir)
+
 	// Log the bootstrap log file path for debugging
-	fmt.Printf("Bootstrap log file: %s\n", runner.logFilePath)
+	tflog.SubsystemDebug(ctx, LogJujuCommand, fmt.Sprintf("Bootstrap log file: %s\n", runner.logFilePath))
 
 	// Update public clouds
 	if err := runner.run(ctx, "update-public-clouds", "--client"); err != nil {
@@ -208,8 +214,8 @@ func (d *DefaultJujuCommand) Bootstrap(ctx context.Context, args BootstrapArgume
 	}
 
 	// Setup cloud
-	cloudName, regionName := splitCloudNameAndRegion(args.Cloud.Name)
-	isPublicCloud, err := isValidPublicCloud(cloudName, regionName)
+	cloudName := args.Cloud.Name
+	isPublicCloud, err := isValidPublicCloud(args)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate cloud: %w", err)
 	}
@@ -226,13 +232,9 @@ func (d *DefaultJujuCommand) Bootstrap(ctx context.Context, args BootstrapArgume
 
 	// Setup credentials
 	store := jujuclient.NewFileClientStore()
-	credentialName := args.CloudCredential.Name
-	if credentialName == "" {
-		credentialName = cloudName
-	}
 	cloudCred := jujucloud.CloudCredential{
 		AuthCredentials: map[string]jujucloud.Credential{
-			credentialName: buildJujuCredential(args.CloudCredential),
+			cloudName: buildJujuCredential(args.CloudCredential),
 		},
 	}
 	if err := store.UpdateCredential(cloudName, cloudCred); err != nil {
@@ -276,15 +278,19 @@ func (d *DefaultJujuCommand) Bootstrap(ctx context.Context, args BootstrapArgume
 }
 
 // UpdateConfig updates controller configuration.
-func (d *DefaultJujuCommand) UpdateConfig(ctx context.Context, connInfo *ControllerConnectionInformation, config map[string]string) error {
+func (d *DefaultJujuCommand) UpdateConfig(
+	ctx context.Context,
+	connInfo *ControllerConnectionInformation,
+	controllerConfig, controllerModelConfig map[string]string,
+) error {
 	// TODO: Implement config update logic
 	return fmt.Errorf("update config not implemented")
 }
 
-// Config retrieves controller configuration settings.
-func (d *DefaultJujuCommand) Config(ctx context.Context, connInfo *ControllerConnectionInformation) (map[string]string, error) {
+// Config retrieves controller configuration and controller-model configuration settings.
+func (d *DefaultJujuCommand) Config(ctx context.Context, connInfo *ControllerConnectionInformation) (map[string]string, map[string]string, error) {
 	// TODO: Implement read logic
-	return nil, fmt.Errorf("read not implemented")
+	return nil, nil, fmt.Errorf("read not implemented")
 }
 
 // Destroy removes the controller.
@@ -296,14 +302,29 @@ func (d *DefaultJujuCommand) Destroy(ctx context.Context, connInfo *ControllerCo
 // writeBootstrapConfig writes the bootstrap config to a YAML file.
 func writeBootstrapConfig(workDir string, config BootstrapConfig) (string, error) {
 	// Skip if config is empty
-	if len(config.ControllerConfig) == 0 && len(config.ModelDefaults) == 0 && len(config.StoragePool) == 0 {
+	if len(config.ControllerConfig) == 0 && len(config.ControllerModelConfig) == 0 && len(config.BootstrapConfig) == 0 {
 		return "", nil
 	}
 
+	// Take all the config maps and write their values as a combined yaml
+	// to the bootstrap config file without any nesting.
+
 	configFilePath := filepath.Join(workDir, "bootstrap-config.yaml")
-	data, err := yaml.Marshal(config)
+	combinedConfig := make(map[string]any)
+
+	for k, v := range config.ControllerConfig {
+		combinedConfig[k] = v
+	}
+	for k, v := range config.ControllerModelConfig {
+		combinedConfig[k] = v
+	}
+	for k, v := range config.BootstrapConfig {
+		combinedConfig[k] = v
+	}
+
+	data, err := yaml.Marshal(combinedConfig)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal config: %w", err)
+		return "", fmt.Errorf("failed to marshal bootstrap config to yaml: %w", err)
 	}
 
 	if err := os.WriteFile(configFilePath, data, 0644); err != nil {
@@ -346,6 +367,19 @@ func buildBootstrapArgs(args BootstrapArguments, configFilePath string) ([]strin
 					}
 				}
 			}
+		case reflect.Map:
+			if fieldValue.Len() > 0 {
+				// For maps, add multiple flags in key=value format
+				iter := fieldValue.MapRange()
+				for iter.Next() {
+					key := iter.Key()
+					value := iter.Value()
+					if key.Kind() == reflect.String && value.Kind() == reflect.String {
+						// Note: quote the value to handle resetting the value.
+						cmdArgs = append(cmdArgs, fmt.Sprintf("--%s %s=%q", flagTag, key.String(), value.String()))
+					}
+				}
+			}
 		default:
 			// Log unhandled field types for debugging
 			if !fieldValue.IsZero() {
@@ -359,8 +393,13 @@ func buildBootstrapArgs(args BootstrapArguments, configFilePath string) ([]strin
 		cmdArgs = append(cmdArgs, "--config", configFilePath)
 	}
 
+	cloudRegion := args.Cloud.Name
+	if args.Cloud.Region != nil {
+		cloudRegion = fmt.Sprintf("%s/%s", args.Cloud.Name, args.Cloud.Region.Name)
+	}
+
 	// Add cloud name and controller name (must be at the end)
-	cmdArgs = append(cmdArgs, args.Cloud.Name, args.Name)
+	cmdArgs = append(cmdArgs, cloudRegion, args.Name)
 
 	return cmdArgs, nil
 }
@@ -420,31 +459,22 @@ func convertToCloudAuthTypes(authTypes []string) []jujucloud.AuthType {
 	return result
 }
 
-// splitCloudNameAndRegion splits a cloud name that may contain a region (e.g., "aws/us-east-1").
-func splitCloudNameAndRegion(cloudNameAndRegion string) (cloudName string, regionName string) {
-	if i := strings.IndexRune(cloudNameAndRegion, '/'); i > 0 {
-		cloudName, regionName = cloudNameAndRegion[:i], cloudNameAndRegion[i+1:]
-	} else {
-		cloudName = cloudNameAndRegion
-	}
-	return
-}
-
 // isValidPublicCloud checks if the cloud name (and possibly region) is a valid public cloud.
-func isValidPublicCloud(cloudName, regionName string) (bool, error) {
+func isValidPublicCloud(args BootstrapArguments) (bool, error) {
 	pubClouds, _, err := jujucloud.PublicCloudMetadata(jujucloud.JujuPublicCloudsPath())
 	if err != nil {
 		return false, fmt.Errorf("failed to get public cloud metadata: %w", err)
 	}
 
 	for pubCloudName, cloud := range pubClouds {
-		if cloudName == pubCloudName {
-			if regionName != "" {
+		if args.Cloud.Name == pubCloudName {
+			if args.Cloud.Region != nil {
+				regionName := args.Cloud.Region.Name
 				exists := slices.ContainsFunc(cloud.Regions, func(r jujucloud.Region) bool {
 					return regionName == r.Name
 				})
 				if !exists {
-					return false, fmt.Errorf("invalid public cloud region for cloud %s with region %s", cloudName, regionName)
+					return false, fmt.Errorf("invalid public cloud region for cloud %s with region %s", args.Cloud.Name, regionName)
 				}
 			}
 			return true, nil

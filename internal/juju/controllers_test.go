@@ -9,42 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSplitCloudNameAndRegion(t *testing.T) {
-	tests := []struct {
-		name           string
-		input          string
-		expectedCloud  string
-		expectedRegion string
-	}{
-		{
-			name:           "cloud with region",
-			input:          "aws/us-east-1",
-			expectedCloud:  "aws",
-			expectedRegion: "us-east-1",
-		},
-		{
-			name:           "cloud without region",
-			input:          "lxd",
-			expectedCloud:  "lxd",
-			expectedRegion: "",
-		},
-		{
-			name:           "cloud with multiple slashes (only first is separator)",
-			input:          "openstack/region/test",
-			expectedCloud:  "openstack",
-			expectedRegion: "region/test",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cloudName, regionName := splitCloudNameAndRegion(tt.input)
-			assert.Equal(t, tt.expectedCloud, cloudName)
-			assert.Equal(t, tt.expectedRegion, regionName)
-		})
-	}
-}
-
 func TestBuildConstraintsString(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -158,19 +122,6 @@ func TestBuildBootstrapArgs(t *testing.T) {
 			contains: []string{"bootstrap", "lxd", "test-controller", "--agent-version=3.6.12"},
 		},
 		{
-			name: "bootstrap with admin secret",
-			args: BootstrapArguments{
-				Name: "test-controller",
-				Cloud: BootstrapCloudArgument{
-					Name: "lxd",
-				},
-				Flags: BootstrapFlags{
-					AdminSecret: "secret123",
-				},
-			},
-			contains: []string{"bootstrap", "lxd", "test-controller", "--admin-secret=secret123"},
-		},
-		{
 			name: "bootstrap with config file",
 			args: BootstrapArguments{
 				Name: "test-controller",
@@ -193,19 +144,6 @@ func TestBuildBootstrapArgs(t *testing.T) {
 				},
 			},
 			contains: []string{"bootstrap", "lxd", "test-controller", "--bootstrap-constraints=arch=amd64,mem=4G"},
-		},
-		{
-			name: "bootstrap with external IPs",
-			args: BootstrapArguments{
-				Name: "test-controller",
-				Cloud: BootstrapCloudArgument{
-					Name: "lxd",
-				},
-				Flags: BootstrapFlags{
-					ControllerExternalIPAddrs: []string{"192.168.1.1", "192.168.1.2"},
-				},
-			},
-			contains: []string{"bootstrap", "lxd", "test-controller", "--controller-external-ips=192.168.1.1", "--controller-external-ips=192.168.1.2"},
 		},
 	}
 
