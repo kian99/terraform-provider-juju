@@ -4,6 +4,10 @@
 package juju
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -264,3 +268,122 @@ func TestBuildJujuCredential(t *testing.T) {
 		})
 	}
 }
+
+func TestBootstrapIntegration(t *testing.T) {
+	// Create a temporary directory for the test
+	tmpDir, err := os.MkdirTemp("", "juju-test-*")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create a mock juju binary that logs all commands it receives
+	mockJujuPath := filepath.Join(tmpDir, "mock-juju")
+	logFilePath := filepath.Join(tmpDir, "juju-commands.log")
+
+	// Create the mock script that echoes all commands to a log file
+	mockScript := fmt.Sprintf(`#!/bin/bash
+# Mock juju binary that logs commands
+echo "$@" >> %s
+
+# Handle different commands
+case "$1" in
+  "update-public-clouds")
+    exit 0
+    ;;
+  "bootstrap")
+    # Create mock controller data in JUJU_DATA
+    if [ -z "$JUJU_DATA" ]; then
+      echo "Error: JUJU_DATA not set" >&2
+      exit 1
+    fi
+    
+    # Extract controller name (last argument)
+    CONTROLLER_NAME="${@: -1}"
+    
+    # Create controllers.yaml
+    mkdir -p "$JUJU_DATA"
+    cat > "$JUJU_DATA/controllers.yaml" <<EOF
+controllers:
+  $CONTROLLER_NAME:
+    uuid: test-uuid-12345
+    api-endpoints: ["127.0.0.1:17070"]
+    ca-cert: |
+      -----BEGIN CERTIFICATE-----
+      TESTCACERT
+      -----END CERTIFICATE-----
+EOF
+    
+    # Create accounts.yaml
+    cat > "$JUJU_DATA/accounts.yaml" <<EOF
+controllers:
+  $CONTROLLER_NAME:
+    user: admin
+    password: test-password-12345
+EOF
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`, logFilePath)
+
+	err = os.WriteFile(mockJujuPath, []byte(mockScript), 0755)
+	assert.NoError(t, err)
+
+	// Create a DefaultJujuCommand with the mock binary
+	cmd, err := NewDefaultJujuCommand(mockJujuPath)
+	assert.NoError(t, err)
+
+	// Prepare bootstrap arguments
+	bootstrapArgs := BootstrapArguments{
+		Name:       "test-controller",
+		JujuBinary: mockJujuPath,
+		Cloud: BootstrapCloudArgument{
+			Name:      "test-cloud",
+			Type:      "manual",
+			AuthTypes: []string{"empty"},
+			Endpoint:  "https://test.example.com",
+		},
+		CloudCredential: BootstrapCredentialArgument{
+			Name:     "test-cred",
+			AuthType: "empty",
+			Attributes: map[string]string{
+				"endpoint": "https://test.example.com",
+			},
+		},
+		Config: BootstrapConfig{
+			ControllerConfig: map[string]string{
+				"test-key": "test-value",
+			},
+		},
+		Flags: BootstrapFlags{
+			AgentVersion: "3.6.0",
+		},
+	}
+
+	// Run bootstrap
+	ctx := context.Background()
+	result, err := cmd.Bootstrap(ctx, bootstrapArgs)
+
+	// Verify the result
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, []string{"127.0.0.1:17070"}, result.Addresses)
+	assert.Contains(t, result.CACert, "TESTCACERT")
+	assert.Equal(t, "admin", result.Username)
+	assert.Equal(t, "test-password-12345", result.Password)
+
+	// Verify commands were logged
+	logContent, err := os.ReadFile(logFilePath)
+	assert.NoError(t, err)
+
+	logStr := string(logContent)
+	// Check that update-public-clouds was called
+	assert.Contains(t, logStr, "update-public-clouds --client")
+	// Check that bootstrap was called with the controller name
+	assert.Contains(t, logStr, "bootstrap")
+	assert.Contains(t, logStr, "test-controller")
+	// Check that flags were passed
+	assert.Contains(t, logStr, "--agent-version=3.6.0")
+}
+
