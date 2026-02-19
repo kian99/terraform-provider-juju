@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
@@ -29,6 +30,7 @@ var _ resource.Resource = &offerResource{}
 var _ resource.ResourceWithConfigure = &offerResource{}
 var _ resource.ResourceWithImportState = &offerResource{}
 var _ resource.ResourceWithUpgradeState = &offerResource{}
+var _ resource.ResourceWithIdentity = &offerResource{}
 
 func NewOfferResource() resource.Resource {
 	return &offerResource{}
@@ -67,8 +69,23 @@ type offerResourceModelV2 struct {
 	Endpoints types.Set    `tfsdk:"endpoints"`
 }
 
+type offerResourceIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
 func (o *offerResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_offer"
+}
+
+// IdentitySchema defines the schema for the resource's identity, which is used during import operations to uniquely identify the resource.
+func (o *offerResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (o *offerResource) Schema(_ context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
