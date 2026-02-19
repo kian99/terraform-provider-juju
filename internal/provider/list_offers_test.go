@@ -34,7 +34,7 @@ func TestAccListOffers_query(t *testing.T) {
 						return fmt.Errorf("not found: juju_offer.this")
 					}
 					offerURL = rs.Primary.Attributes["url"]
-					
+
 					rs, ok = s.RootModule().Resources["juju_model.this"]
 					if !ok {
 						return fmt.Errorf("not found: juju_model.this")

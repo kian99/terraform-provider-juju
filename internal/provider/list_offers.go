@@ -73,7 +73,7 @@ func (r *offerLister) ListResourceConfigSchema(_ context.Context, _ list.ListRes
 				Description: "The offer URL to filter by.",
 				Optional:    true,
 				Validators: []validator.String{
-					offerURLValidator{},
+					NewValidatorOfferURL(),
 				},
 			},
 		},
@@ -155,7 +155,7 @@ type offerResourceModelForListing struct {
 	ID types.String `tfsdk:"id"`
 }
 
-func (r *offerLister) getOfferResource(ctx context.Context, offer juju.ListOffersOutput, sc schema.Schema) (offerResourceModelV2, diag.Diagnostics) {
+func (r *offerLister) getOfferResource(ctx context.Context, offer juju.ListOffersOutput, sc schema.Schema) (offerResourceModelForListing, diag.Diagnostics) {
 	resource := offerResourceModelForListing{}
 	diags := diag.Diagnostics{}
 
@@ -168,9 +168,9 @@ func (r *offerLister) getOfferResource(ctx context.Context, offer juju.ListOffer
 	endpointSet, errDiag := types.SetValueFrom(ctx, types.StringType, offer.Endpoints)
 	diags.Append(errDiag...)
 	if diags.HasError() {
-		return offerResourceModelV2{}, diags
+		return offerResourceModelForListing{}, diags
 	}
 	resource.Endpoints = endpointSet
 
-	return offerResourceModelV2(resource), diags
+	return resource, diags
 }
