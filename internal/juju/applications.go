@@ -661,9 +661,12 @@ func (c applicationsClient) ReadApplication(ctx context.Context, input *ReadAppl
 		return nil, NewApplicationNotFoundError(input.AppName)
 	}
 	if apps[0].Error != nil {
-		// Return applicationNotFoundError to trigger retry.
-		c.Debugf("Actual error from ApplicationsInfo", map[string]interface{}{"err": apps[0].Error})
-		return nil, NewApplicationNotFoundError(input.AppName)
+		resultErr := apps[0].Error
+		c.Debugf("Actual error from ApplicationsInfo", map[string]interface{}{"err": resultErr})
+		if params.IsCodeNotFound(resultErr) {
+			return nil, NewApplicationNotFoundError(input.AppName)
+		}
+		return nil, jujuerrors.Annotate(resultErr, "when querying the applications info")
 	}
 
 	appInfo := apps[0].Result

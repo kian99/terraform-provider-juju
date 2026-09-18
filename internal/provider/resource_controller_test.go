@@ -387,7 +387,7 @@ func TestAcc_ResourceControllerWithJujuBinary(t *testing.T) {
 		updatedAgentVersion = "3.6.23"
 	case 4:
 		initialAgentVersion = "4.0.12"
-		updatedAgentVersion = "4.0.13"
+		updatedAgentVersion = "4.0.14" // No released controller binaries for 4.0.13
 	default:
 		t.Errorf("unsupported Juju agent version %q for this test", agentVersion)
 	}

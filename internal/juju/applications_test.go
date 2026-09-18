@@ -20,6 +20,7 @@ import (
 	"github.com/juju/juju/core/resource"
 	charmresources "github.com/juju/juju/domain/deployment/charm/resource"
 	"github.com/juju/juju/environs/config"
+	"github.com/juju/juju/rpc/params"
 	"github.com/juju/utils/v4"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
@@ -550,6 +551,25 @@ func (s *ApplicationSuite) TestPartialApplicationDeployError() {
 		}},
 	})
 	s.Assert().ErrorAs(err, &ApplicationPartiallyCreatedError{})
+}
+
+func (s *ApplicationSuite) TestReadApplicationPreservesDeadApplicationError() {
+	defer s.setupMocks(s.T()).Finish()
+	client := s.getApplicationsClient()
+
+	s.mockApplicationClient.EXPECT().ApplicationsInfo(gomock.Any(), gomock.Any()).Return(
+		[]params.ApplicationInfoResult{{
+			Error: &params.Error{
+				Message: "querying application constraints for application \"testapplication\": application is dead",
+			},
+		}}, nil)
+
+	_, err := client.ReadApplication(s.T().Context(), &ReadApplicationInput{
+		ModelUUID: s.testModelUUID,
+		AppName:   "testapplication",
+	})
+	s.Assert().ErrorContains(err, "application is dead")
+	s.Assert().NotErrorIs(err, ApplicationNotFoundError)
 }
 
 // In order for 'go test' to run this suite, we need to create

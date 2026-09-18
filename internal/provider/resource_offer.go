@@ -277,6 +277,12 @@ func (o *offerResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	state.Endpoints = endpointSet
 	state.URL = types.StringValue(response.OfferURL)
 	state.ID = types.StringValue(response.OfferURL)
+	// Juju does not store this Terraform-only deletion option. Restore the
+	// schema default after import (and for legacy state that omitted it), while
+	// preserving an explicitly configured value in normal state refreshes.
+	if state.AllowForceDestroy.IsNull() {
+		state.AllowForceDestroy = types.BoolValue(false)
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 
