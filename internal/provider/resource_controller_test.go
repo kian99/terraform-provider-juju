@@ -386,9 +386,6 @@ func TestAcc_ResourceControllerWithJujuBinary(t *testing.T) {
 		initialAgentVersion = "3.6.21"
 		updatedAgentVersion = "3.6.23"
 	case 4:
-		t.Skip("Skip until 4.0.13 is released." +
-			"Early 4.0.x releases moved the ModelUpgrader facade before " +
-			"a revert in https://github.com/juju/juju/pull/22488 released in 4.0.12.")
 		initialAgentVersion = "4.0.12"
 		updatedAgentVersion = "4.0.13"
 	default:
