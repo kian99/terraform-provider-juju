@@ -1057,7 +1057,7 @@ func TestAcc_CustomResourcesAddedToPlanMicrok8s(t *testing.T) {
 		t.Skipf("%s is not set or is below 3.0.3", TestJujuAgentVersion)
 	}
 	modelName := acctest.RandomWithPrefix("tf-test-custom-resource-updates-microk8s")
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{
@@ -1159,7 +1159,7 @@ func TestAcc_CustomResourceUpdatesMicrok8s(t *testing.T) {
 		t.Skipf("%s is not set or is below 3.0.3", TestJujuAgentVersion)
 	}
 	modelName := acctest.RandomWithPrefix("tf-test-custom-resource-updates-microk8s")
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{
@@ -1213,7 +1213,7 @@ func TestAcc_CustomResourcesRemovedFromPlanMicrok8s(t *testing.T) {
 		t.Skipf("%s is not set or is below 3.0.3", TestJujuAgentVersion)
 	}
 	modelName := acctest.RandomWithPrefix("tf-test-custom-resource-updates-microk8s")
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{
@@ -1267,7 +1267,7 @@ func TestAcc_CustomResourcesFromPrivateRegistry(t *testing.T) {
 	appResourceFullName := "juju_application." + appName
 	// - Remove the custom resource.
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheckWithK8s(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{
@@ -1967,7 +1967,7 @@ func TestAcc_ResourceApplication_StorageK8s(t *testing.T) {
 
 	storageConstraints := map[string]string{"label": "pgdata", "size": "1M"}
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{
@@ -2866,7 +2866,7 @@ func TestAcc_ResourceApplication_ParallelDeploy(t *testing.T) {
 	default:
 		t.Fatalf("unknown test cloud")
 	}
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{
@@ -2928,7 +2928,7 @@ func TestAcc_ResourceApplication_CustomOCIForResource(t *testing.T) {
 	resourceName := "coredns-image"
 	ociImage := "ghcr.io/canonical/test:6a873fb35b0170dfe49ed27ba8ee6feb8e475131"
 	ociImage2 := "ghcr.io/canonical/test:ab0b183f22db2959e0350f54d92f9ed3583c4167"
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{

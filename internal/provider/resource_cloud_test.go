@@ -38,7 +38,11 @@ func TestAcc_ResourceCloud(t *testing.T) {
 	// controller, the field must not be set.
 	targetController := jaasTargetController(t)
 
-	resource.ParallelTest(t, resource.TestCase{
+	// Avoid running this test in parallel specifically for JAAS.
+	// when the test adds a cloud, it effects the default behaviour of the API.
+	// With 2 clouds, JAAS requires that client specify a cloud, with only 1
+	// cloud that cloud is always picked.
+	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		CheckDestroy:             testAccCheckCloudDestroy(cloudName),

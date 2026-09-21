@@ -27,7 +27,7 @@ func TestAcc_ResourceAction(t *testing.T) {
 	actionName := "echo"
 	modelName := acctest.RandomWithPrefix("tf-test-action")
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{

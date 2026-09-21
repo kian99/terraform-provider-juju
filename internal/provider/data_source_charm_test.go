@@ -21,7 +21,7 @@ var charmProviderFactories = map[string]func() (tfprotov6.ProviderServer, error)
 }
 
 func TestAcc_DataSourceCharm_Basic(t *testing.T) {
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: charmProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -63,7 +63,7 @@ data "juju_charm" "test" {
 }
 
 func TestAcc_DataSourceCharm_RelationInterface(t *testing.T) {
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: charmProviderFactories,
 		Steps: []resource.TestStep{
 			{

@@ -580,6 +580,7 @@ func TestAccLazyAPIAllowsJAASResourceValidation(t *testing.T) {
 	t.Setenv(JujuClientIDEnvKey, "")
 	t.Setenv(JujuClientSecretEnvKey, "")
 
+	// Avoid running in parallel, SetEnv may interfere with other tests.
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: frameworkProviderFactories,
 		Steps: []resource.TestStep{
